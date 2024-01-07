@@ -1,6 +1,7 @@
 {-# LANGUAGE BangPatterns     #-}
 {-# LANGUAGE MagicHash        #-}
 {-# LANGUAGE CPP              #-}
+{-# LANGUAGE BlockArguments   #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 -- |
@@ -34,6 +35,7 @@ import           Data.Word
 import qualified Data.ByteString          as S
 import qualified Data.ByteString.Internal as S
 import qualified Data.ByteString.Lazy     as L
+import qualified Data.ByteString.Lazy.Char8 as LC
 import qualified Data.ByteString.Short    as Sh
 
 import           Data.ByteString.Builder
@@ -51,6 +53,7 @@ import           Numeric (showFFloat)
 import           System.Posix.Internals (c_unlink)
 
 import           Test.Tasty (TestTree, TestName, testGroup)
+import           Test.Tasty.HUnit (testCase, (@?=))
 import           Test.Tasty.QuickCheck
                    ( Arbitrary(..), oneof, choose, listOf, elements, forAll
                    , counterexample, ioProperty, Property, testProperty
@@ -639,14 +642,16 @@ testsASCII =
 
 testsFloating :: [TestTree]
 testsFloating =
-  [ testMatches "f2sBasic" floatDec show
+  [ testMatches "f2sNonNumbersAndZero" floatDec show
         [ ( 0.0    , "0.0" )
         , ( (-0.0) , "-0.0" )
-        , ( 1.0    , "1.0" )
-        , ( (-1.0) , "-1.0" )
         , ( (0/0)  , "NaN" )
         , ( (1/0)  , "Infinity" )
         , ( (-1/0) , "-Infinity" )
+        ]
+  , testMatches "f2sBasic" floatDec show
+        [ ( 1.0    , "1.0" )
+        , ( (-1.0) , "-1.0" )
         ]
   , testMatches "f2sSubnormal" floatDec show
         [ ( 1.1754944e-38 , "1.1754944e-38" )
@@ -737,10 +742,12 @@ testsFloating =
         , ( 1.23456735e-36 , "1.23456735e-36" )
         ]
   , testMatches "d2sBasic" doubleDec show
+        [ ( 1.0    , "1.0" )
+        , ( (-1.0) , "-1.0" )
+        ]
+  , testMatches "f2sNonNumbersAndZero" doubleDec show
         [ ( 0.0    , "0.0" )
         , ( (-0.0) , "-0.0" )
-        , ( 1.0    , "1.0" )
-        , ( (-1.0) , "-1.0" )
         , ( (0/0)  , "NaN" )
         , ( (1/0)  , "Infinity" )
         , ( (-1/0) , "-Infinity" )
@@ -963,7 +970,7 @@ testsFloating =
     singleMatches dec refdec (x, ref) = L.unpack (toLazyByteString (dec x)) === encodeASCII (refdec x) .&&. refdec x === ref
 
     testMatches :: TestName -> (a -> Builder) -> (a -> String) -> [(a, String)] -> TestTree
-    testMatches name dec refdec lst = testProperty name . conjoin $ fmap (singleMatches dec refdec) lst
+    testMatches name dec refdec = testCase name . traverse_ \(f, s) -> LC.unpack (toLazyByteString (dec f)) @?= s
 
     maxMantissa = (1 `shiftL` 53) - 1 :: Word64
 
