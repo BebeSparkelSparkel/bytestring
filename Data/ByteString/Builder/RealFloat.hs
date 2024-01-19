@@ -80,11 +80,12 @@ module Data.ByteString.Builder.RealFloat
   , scientific
   , scientificZeroPaddedExponent
   , generic
+  , shortest
   ) where
 
 import Data.ByteString.Builder.Internal (Builder, shortByteString)
 import qualified Data.ByteString.Builder.RealFloat.Internal as R
-import Data.ByteString.Builder.RealFloat.Internal (FloatFormat(..), fScientific, fGeneric, string7, Mantissa, DecimalLength)
+import Data.ByteString.Builder.RealFloat.Internal (FloatFormat(..), fScientific, fGeneric, string7, Mantissa, DecimalLength, fShortest, SpecialStrings(SpecialStrings))
 import Data.ByteString.Builder.RealFloat.Internal (positiveZero, negativeZero)
 import qualified Data.ByteString.Builder.RealFloat.F2S as RF
 import qualified Data.ByteString.Builder.RealFloat.D2S as RD
@@ -181,6 +182,18 @@ standardSpecialStrings = scientificSpecialStrings
 generic :: FloatFormat a
 generic = fGeneric 'e' Nothing (0,7) standardSpecialStrings False
 
+-- | Standard or scientific notation depending on which uses the least number of charabers.
+--
+-- @since ????
+shortest :: FloatFormat a
+shortest = fShortest 'e' SpecialStrings
+  { nan = "NaN"
+  , positiveInfinity = "Inf"
+  , negativeInfinity = "-Inf"
+  , positiveZero = "0"
+  , negativeZero = "-0"
+  }
+
 -- TODO: support precision argument for FGeneric and FScientific
 -- | Returns a rendered Float. Returns the \'shortest\' representation in
 -- scientific notation and takes an optional precision argument in standard
@@ -271,6 +284,16 @@ formatFloating fmt f = case fmt of
        else sci expoZeroPad eE
   FScientific {..} -> specialsOr specials $ sci expoZeroPad eE
   FStandard {..} -> specialsOr specials $ std precision
+  FShortest {..} -> specialsOr specials
+    if    e'' >= 0 && (olength + 2   >= e''  || olength == 1 && e'' <= 2)
+       || e'' <  0 && (olength + e'' >= (-3) || olength == 1 && e'' >= (-2))
+    then if e'' >= 0
+      then printSign f <> buildDigits (truncate $ abs f :: mw)
+      else std Nothing
+    else sci False eE
+    where
+    e'' = R.toInt e
+    olength = R.decimalLength m
   where
   sci expoZeroPad eE = BP.primBounded (R.toCharsScientific @a Proxy expoZeroPad eE sign m e) ()
   std precision = printSign f <> showStandard m e' precision

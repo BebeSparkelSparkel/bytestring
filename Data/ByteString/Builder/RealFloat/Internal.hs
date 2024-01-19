@@ -90,6 +90,7 @@ module Data.ByteString.Builder.RealFloat.Internal
     , FloatFormat(..)
     , fScientific
     , fGeneric
+    , fShortest
 
     , module Data.ByteString.Builder.RealFloat.TableGenerator
     ) where
@@ -1032,6 +1033,10 @@ data FloatFormat a
     , specials :: SpecialStrings
     , expoZeroPad :: Bool -- ^ pad the exponent with zeros
     }
+  | FShortest
+    { eE :: Word8#
+    , specials :: SpecialStrings
+    }
   deriving Show
 fScientific :: Char -> SpecialStrings -> Bool -> FloatFormat a
 fScientific eE specials expoZeroPad = FScientific
@@ -1040,6 +1045,11 @@ fScientific eE specials expoZeroPad = FScientific
   }
 fGeneric :: Char -> Maybe Int -> (Int, Int) -> SpecialStrings -> Bool -> FloatFormat a
 fGeneric eE precision stdExpoRange specials expoZeroPad = FGeneric
+  { eE = asciiRaw $ ord eE
+  , ..
+  }
+fShortest :: Char -> SpecialStrings -> FloatFormat a
+fShortest eE specials = FShortest
   { eE = asciiRaw $ ord eE
   , ..
   }

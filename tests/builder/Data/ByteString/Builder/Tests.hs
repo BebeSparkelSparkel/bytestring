@@ -64,6 +64,7 @@ import           Test.Tasty.QuickCheck
                    , (===), (.&&.), (.||.), conjoin
                    , UnicodeString(..), NonNegative(..)
                    )
+import           Test.QuickCheck.Assertions ((?<=))
 import           QuickCheckUtils
 import           Test.QuickCheck.Assertions (binAsrt)
 
@@ -761,6 +762,22 @@ testsFloating = testGroup "RealFloat"
           $  indexEnd (padLen + 1) == 'e'
           || indexEnd (padLen + 1) == '-' && indexEnd (padLen + 2) == 'e'
         ]
+    , testGroup "FShortest"
+      [ testProperty "prints equivalent value" \f -> read (LC.unpack $ toLazyByteString $ formatFloat shortest f) === f
+      , testProperty "shortest length always less than or equal to standard or scientific length outputs" \f -> let
+        sh  = L.length $ toLazyByteString $ formatFloat shortest                 f
+        std = L.length $ toLazyByteString $ formatFloat standardDefaultPrecision f
+        sci = L.length $ toLazyByteString $ formatFloat scientific               f
+        in sh ?<= min std sci
+      , testMatches "no .0 for whole numbers" (formatFloat shortest) (show . truncate)
+        [ (1, "1")
+        , (-1, "-1")
+        , (10, "10")
+        , (-10, "-10")
+        , (15, "15")
+        , (-15, "-15")
+        ]
+      ]
     , testMatches "f2sPowersOf10" floatDec show $
           fmap asShowRef [read ("1.0e" ++ show x) :: Float | x <- [-46..39 :: Int]]
     ]
@@ -1005,6 +1022,22 @@ testsFloating = testGroup "RealFloat"
           $  indexEnd (padLen + 1) == 'e'
           || indexEnd (padLen + 1) == '-' && indexEnd (padLen + 2) == 'e'
         ]
+    , testGroup "FShortest"
+      [ testProperty "prints equivalent value" \f -> read (LC.unpack $ toLazyByteString $ formatDouble shortest f) === f
+      , testProperty "shortest length always less than or equal to standard or scientific length outputs" \f -> let
+        sh  = L.length $ toLazyByteString $ formatDouble shortest                 f
+        std = L.length $ toLazyByteString $ formatDouble standardDefaultPrecision f
+        sci = L.length $ toLazyByteString $ formatDouble scientific               f
+        in sh ?<= min std sci
+      , testMatches "no .0 for whole numbers" (formatDouble shortest) (show . truncate)
+        [ (1, "1")
+        , (-1, "-1")
+        , (10, "10")
+        , (-10, "-10")
+        , (15, "15")
+        , (-15, "-15")
+        ]
+      ]
     , testMatches "d2sPowersOf10" doubleDec show $
           fmap asShowRef [read ("1.0e" ++ show x) :: Double | x <- [-324..309 :: Int]]
     ]
