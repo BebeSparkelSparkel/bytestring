@@ -235,7 +235,6 @@ formatFloating :: forall a mw ew ei.
   -- mantissa
   , mw ~ R.MantissaWord a
   , R.Mantissa mw
-  , ToWord64 mw
   , R.DecimalLength mw
   , BuildDigits mw
   -- exponent
@@ -256,15 +255,11 @@ formatFloating fmt f = case fmt of
   FStandard {..} -> specialsOr specials $ std precision
   where
   sci eE = BP.primBounded (R.toCharsScientific @a Proxy eE sign m e) ()
-  std precision = printSign f `mappend` showStandard m e' precision
+  std precision = printSign f <> showStandard m e' precision
   e' = R.toInt e + R.decimalLength m
   R.FloatingDecimal m e = toD @a mantissa expo
   (sign, mantissa, expo) = R.breakdown f
   specialsOr specials = flip fromMaybe $ R.toCharsNonNumbersAndZero specials f
-
-class ToWord64 a where toWord64 :: a -> Word64
-instance ToWord64 Word32 where toWord64 = R.word32ToWord64
-instance ToWord64 Word64 where toWord64 = id
 
 class ToD a where toD :: R.MantissaWord a -> R.ExponentWord a -> R.FloatingDecimal a
 instance ToD Float where toD = RF.f2d
