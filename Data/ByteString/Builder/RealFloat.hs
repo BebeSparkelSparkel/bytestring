@@ -8,6 +8,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 -- |
 -- Module      : Data.ByteString.Builder.RealFloat
 -- Copyright   : (c) Lawrence Wu 2021
@@ -80,13 +81,14 @@ module Data.ByteString.Builder.RealFloat
   , generic
   ) where
 
-import Data.ByteString.Builder.Internal (Builder)
+import Data.ByteString.Builder.Internal (Builder, shortByteString)
 import qualified Data.ByteString.Builder.RealFloat.Internal as R
-import Data.ByteString.Builder.RealFloat.Internal (FloatFormat(..), fScientific, fGeneric)
+import Data.ByteString.Builder.RealFloat.Internal (FloatFormat(..), fScientific, fGeneric, string7, Mantissa, DecimalLength)
 import Data.ByteString.Builder.RealFloat.Internal (positiveZero, negativeZero)
 import qualified Data.ByteString.Builder.RealFloat.F2S as RF
 import qualified Data.ByteString.Builder.RealFloat.D2S as RD
 import qualified Data.ByteString.Builder.Prim as BP
+import qualified Data.ByteString.Short as BS
 import GHC.Float (roundTo)
 import GHC.Word (Word32, Word64)
 import GHC.Show (intToDigit)
@@ -235,6 +237,7 @@ formatFloating :: forall a mw ew ei.
   , R.Mantissa mw
   , ToWord64 mw
   , R.DecimalLength mw
+  , BuildDigits mw
   -- exponent
   , ew ~ R.ExponentWord a
   , Integral ew
@@ -253,7 +256,7 @@ formatFloating fmt f = case fmt of
   FStandard {..} -> specialsOr specials $ std precision
   where
   sci eE = BP.primBounded (R.toCharsScientific @a Proxy eE sign m e) ()
-  std precision = printSign f `mappend` showStandard (toWord64 m) e' precision
+  std precision = printSign f `mappend` showStandard m e' precision
   e' = R.toInt e + R.decimalLength m
   R.FloatingDecimal m e = toD @a mantissa expo
   (sign, mantissa, expo) = R.breakdown f
@@ -277,26 +280,41 @@ printSign :: RealFloat a => a -> Builder
 printSign f = if f < 0 then char7 '-' else mempty
 
 -- | Returns a list of decimal digits in a Word64
-digits :: Word64 -> [Int]
+digits :: Mantissa w => w -> [Int]
 digits w = go [] w
   where go ds 0 = ds
-        go ds c = let (q, r) = R.dquotRem10 c
-                   in go ((R.word64ToInt r) : ds) q
+        go ds c = let (q, r) = R.quotRem10 c
+                   in go (fromIntegral r : ds) q
 
 -- | Show a floating point value in standard notation. Based on GHC.Float.showFloat
-showStandard :: Word64 -> Int -> Maybe Int -> Builder
+-- TODO: Remove the use of String and lists because it makes this very slow compared
+--       to the actual implementation of the Ryu algorithm.
+-- TODO: The digits should be found with the look up method described in the Ryu
+--       reference algorithm.
+showStandard ::
+  ( DecimalLength w
+  , Mantissa w
+  , Num w
+  , BuildDigits w
+  ) => w -> Int -> Maybe Int -> Builder
 showStandard m e prec =
   case prec of
     Nothing
-      | e <= 0 -> char7 '0'
-               `mappend` char7 '.'
-               `mappend` R.string7 (replicate (-e) '0')
-               `mappend` mconcat (digitsToBuilder ds)
-      | otherwise ->
-          let f 0 s     rs = mk0 (reverse s) `mappend` char7 '.' `mappend` mk0 rs
-              f n s     [] = f (n-1) (char7 '0':s) []
-              f n s (r:rs) = f (n-1) (r:s) rs
-           in f e [] (digitsToBuilder ds)
+      | e <= 0
+        -> string7 "0."
+        <> zeros (-e)
+        <> buildDigits m
+      | e >= olength
+        -> buildDigits m
+        <> zeros (e - olength)
+        <> string7 ".0"
+      | otherwise -> let
+        wholeDigits = m `div` (10 ^ (olength - e))
+        fractDigits = m `mod` (10 ^ (olength - e))
+        in buildDigits wholeDigits
+        <> char7 '.'
+        <> zeros (olength - e - R.decimalLength fractDigits)
+        <> buildDigits fractDigits
     Just p
       | e >= 0 ->
           let (ei, is') = roundTo 10 (p' + e) ds
@@ -316,3 +334,9 @@ showStandard m e prec =
     ds = digits m
     digitsToBuilder = fmap (char7 . intToDigit)
 
+    zeros n = shortByteString $ BS.take n $ BS.replicate 308 48
+    olength = R.decimalLength m
+
+class BuildDigits a where buildDigits :: a -> Builder
+instance BuildDigits Word32 where buildDigits = BP.primBounded BP.word32Dec
+instance BuildDigits Word64 where buildDigits = BP.primBounded BP.word64Dec

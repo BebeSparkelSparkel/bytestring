@@ -35,7 +35,7 @@ module Data.ByteString.Builder.RealFloat.Internal
     , toCharsNonNumbersAndZero
     , SpecialStrings(..)
     , DecimalLength(..)
-    , Mantissa
+    , Mantissa(quotRem10)
     , pow5bits
     , log10pow2
     , log10pow5
