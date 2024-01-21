@@ -79,6 +79,7 @@ module Data.ByteString.Builder.RealFloat
   , standardDefaultPrecision
   , scientific
   , scientificZeroPaddedExponent
+  , scientificExplicitExponentSign
   , generic
   , shortest
   ) where
@@ -145,7 +146,7 @@ standardDefaultPrecision = FStandard
 --
 -- @since 0.11.2.0
 scientific :: FloatFormat a
-scientific = fScientific 'e' scientificSpecialStrings False
+scientific = fScientific 'e' scientificSpecialStrings False False
 
 -- | Like @scientific@ but has a zero padded exponent.
 scientificZeroPaddedExponent :: forall a. ZeroPadCount a => FloatFormat a
@@ -158,6 +159,17 @@ scientificZeroPaddedExponent = scientific
   }
   where
   positiveZero = "0.0e" <> replicate (zeroPadCount @a) '0'
+
+scientificExplicitExponentSign :: FloatFormat a
+scientificExplicitExponentSign = scientific
+  { expoExplicitSign = True
+  , specials = scientificSpecialStrings
+    { positiveZero
+    , negativeZero = '-' : positiveZero
+    }
+  }
+  where
+  positiveZero = "0.0e+0"
 
 class ZeroPadCount a where zeroPadCount :: Int
 instance ZeroPadCount Float where zeroPadCount = 2
@@ -180,7 +192,7 @@ standardSpecialStrings = scientificSpecialStrings
 --
 -- @since 0.11.2.0
 generic :: FloatFormat a
-generic = fGeneric 'e' Nothing (0,7) standardSpecialStrings False
+generic = fGeneric 'e' Nothing (0,7) standardSpecialStrings False False
 
 -- | Standard or scientific notation depending on which uses the least number of charabers.
 --
@@ -280,9 +292,9 @@ formatFloating :: forall a mw ew ei.
 formatFloating fmt f = case fmt of
   FGeneric {stdExpoRange = (minExpo,maxExpo), ..} -> specialsOr specials
     if e' >= minExpo && e' <= maxExpo
-       then std precision
-       else sci expoZeroPad eE
-  FScientific {..} -> specialsOr specials $ sci expoZeroPad eE
+      then std precision
+      else sci eE expoZeroPad expoExplicitSign
+  FScientific {..} -> specialsOr specials $ sci eE expoZeroPad expoExplicitSign
   FStandard {..} -> specialsOr specials $ std precision
   FShortest {..} -> specialsOr specials
     if    e'' >= 0 && (olength + 2   >= e''  || olength == 1 && e'' <= 2)
@@ -290,12 +302,12 @@ formatFloating fmt f = case fmt of
     then if e'' >= 0
       then printSign f <> buildDigits (truncate $ abs f :: mw)
       else std Nothing
-    else sci False eE
+    else sci eE False False
     where
     e'' = R.toInt e
     olength = R.decimalLength m
   where
-  sci expoZeroPad eE = BP.primBounded (R.toCharsScientific @a Proxy expoZeroPad eE sign m e) ()
+  sci eE expoZeroPad expoExplicitSign = BP.primBounded (R.toCharsScientific @a Proxy eE expoZeroPad expoExplicitSign sign m e) ()
   std precision = printSign f <> showStandard m e' precision
   e' = R.toInt e + R.decimalLength m
   R.FloatingDecimal m e = toD @a mantissa expo
